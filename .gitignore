@@ -1,0 +1,5 @@
+.build
+.DS_Store
+VimiumNative.app/Contents/MacOS/*
+!VimiumNative.app/Contents/MacOS/.gitkeep
+Makefile
