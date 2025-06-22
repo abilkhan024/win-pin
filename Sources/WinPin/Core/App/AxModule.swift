@@ -103,19 +103,13 @@ class AxModule: AppModule {
     guard
       let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
         as? [[String: AnyObject]]
-    else {
-      print("No window list")
-      return
-    }
+    else { return }
 
     guard
       let target = windowList.first(where: { win in
         (win[kCGWindowNumber as String] as? CGWindowID) == id
       })
-    else {
-      print("No target")
-      return
-    }
+    else { return }
 
     guard let pid = target[kCGWindowOwnerPID as String] as? pid_t else { return }
     let title = target[kCGWindowName as String] as? String ?? ""
@@ -125,24 +119,51 @@ class AxModule: AppModule {
 
     var value: CFTypeRef?
     if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) != .success {
-      print("windows attr")
       return
     }
 
     guard let windows = value as? [AXUIElement] else { return }
 
-    for win in windows {
+    let sortedWindows = windows.map { win in
       var titleRef: CFTypeRef?
       if AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef) == .success,
-        let winTitle = titleRef as? String,
-        winTitle == title
+        let winTitle = titleRef as? String
       {
-        return focusWindow(with: win, pid: pid)
+        return (score: maxCommonSubstringLength(winTitle, title), win: Optional(win))
+      }
+      return (score: 0, win: nil)
+    }.sorted { a, b in a.score > b.score }
+
+    for entry in sortedWindows {
+      if let win = entry.win {
+        focusWindow(with: win, pid: pid)
       }
     }
-    if let win = windows.first {
-      focusWindow(with: win, pid: pid)
+  }
+
+  func maxCommonSubstringLength(_ s1: String, _ s2: String) -> Int {
+    let a = Array(s1)
+    let b = Array(s2)
+    let n = a.count
+    let m = b.count
+    var dp = [Int](repeating: 0, count: m + 1)
+    var maxLen = 0
+
+    for i in 1...n {
+      var prev = 0
+      for j in 1...m {
+        let temp = dp[j]
+        if a[i - 1] == b[j - 1] {
+          dp[j] = prev + 1
+          maxLen = max(maxLen, dp[j])
+        } else {
+          dp[j] = 0
+        }
+        prev = temp
+      }
     }
+
+    return maxLen
   }
 
   private func focusWindow(with: AXUIElement, pid: pid_t) {

@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-let appName = "MacLib"
+let appName = "WinPin"
 
 let package = Package(
   name: appName,
