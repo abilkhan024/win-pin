@@ -8,8 +8,8 @@ var shorcuts = try workspaces.map { key in
     KeyboardShortcut(
       bind: try KeyboardMapping.create(from: "<D><M>\(key)"),
       exec: { _ in
-        if let windowAtKey = worspaceWindows[key], let window = windowAtKey {
-          App.shared.get(AxModule.self).focusWindow(with: window)
+        if let windowAtKey = worspaceWindows[key], let windowId = windowAtKey {
+          App.shared.get(AxModule.self).focusWindow(with: windowId)
         } else {
           print("No window at \(key)")
         }

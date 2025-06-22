@@ -48,40 +48,40 @@ class AxModule: AppModule {
     guard
       AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
       let title = titleRef as? String
-    else {
-      print("Failed title")
-      return nil
-    }
+    else { return nil }
 
     var pid: pid_t = 0
-    guard AXUIElementGetPid(window, &pid) == .success else {
-      print("Failed pid")
+    guard AXUIElementGetPid(window, &pid) == .success else { return nil }
+
+    guard
+      let windowsList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
+        as? [[String: AnyObject]]
+    else {
       return nil
     }
 
-    // Search CGWindowList for matching PID + title
-    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-    let windowList =
-      CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: AnyObject]] ?? []
+    var result: (id: CGWindowID, length: Int)? = nil
 
-    var finalWindowNumber: CGWindowID? = nil
-    for windowInfo in windowList {
-      let windowPID = windowInfo[kCGWindowOwnerPID as String] as? pid_t
-      let windowTitle = windowInfo[kCGWindowName as String] as? String ?? ""
-
-      guard let windowNumber = windowInfo[kCGWindowNumber as String] as? CGWindowID else {
+    for window in windowsList {
+      guard let windowId = window[kCGWindowNumber as String] as? CGWindowID else {
         continue
       }
-      if windowPID == pid {
-        finalWindowNumber = windowNumber
+      let windowPid = window[kCGWindowOwnerPID as String] as? pid_t
+      let windowTitle = window[kCGWindowName as String] as? String ?? ""
+      let intersectionLength = maxCommonSubstringLength(windowTitle, title)
+      if pid != windowPid {
+        continue
       }
-
-      if windowPID == pid && windowTitle == title {
-        finalWindowNumber = windowNumber
+      guard let cur = result else {
+        result = (id: windowId, length: intersectionLength)
+        continue
+      }
+      if intersectionLength > cur.length {
+        result = (id: windowId, length: intersectionLength)
       }
     }
 
-    return finalWindowNumber
+    return result?.id
   }
 
   func focusWindow(_ window: AXUIElement) {
@@ -101,47 +101,67 @@ class AxModule: AppModule {
 
   func focusWindow(with id: CGWindowID) {
     guard
-      let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
+      let windowsList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
         as? [[String: AnyObject]]
-    else { return }
-
-    guard
-      let target = windowList.first(where: { win in
-        (win[kCGWindowNumber as String] as? CGWindowID) == id
-      })
-    else { return }
-
-    guard let pid = target[kCGWindowOwnerPID as String] as? pid_t else { return }
-    let title = target[kCGWindowName as String] as? String ?? ""
-
-    // Find AXUIElement window with matching PID and title
-    let axApp = AXUIElementCreateApplication(pid)
-
-    var value: CFTypeRef?
-    if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) != .success {
+    else {
       return
     }
+    guard
+      let window = windowsList.first(where: { window in
+        guard let windowId = window[kCGWindowNumber as String] as? CGWindowID else {
+          return false
 
-    guard let windows = value as? [AXUIElement] else { return }
+        }
 
-    let sortedWindows = windows.map { win in
-      var titleRef: CFTypeRef?
-      if AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef) == .success,
-        let winTitle = titleRef as? String
-      {
-        return (score: maxCommonSubstringLength(winTitle, title), win: Optional(win))
+        return windowId == id
+      })
+    else {
+      return
+    }
+    let title = window[kCGWindowName as String] as? String ?? ""
+    guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, !title.isEmpty else { return }
+
+    var result: (window: AXUIElement, length: Int)? = nil
+
+    for axWindow in getWindowsOfApp(pid: pid) {
+      var windowTitleRaw: CFTypeRef? = nil
+
+      let axResult = AXUIElementCopyAttributeValue(
+        axWindow, kAXTitleAttribute as CFString, &windowTitleRaw)
+
+      guard axResult == .success else { continue }
+      let windowTitle = windowTitleRaw as! String
+      let intersectionLength = maxCommonSubstringLength(windowTitle, title)
+      guard let cur = result else {
+        result = (window: axWindow, length: intersectionLength)
+        continue
       }
-      return (score: 0, win: nil)
-    }.sorted { a, b in a.score > b.score }
-
-    for entry in sortedWindows {
-      if let win = entry.win {
-        focusWindow(with: win, pid: pid)
+      if intersectionLength > cur.length {
+        result = (window: axWindow, length: intersectionLength)
       }
+
+    }
+
+    if let window = result?.window {
+      self.focusWindow(window)
     }
   }
 
+  private func getWindowsOfApp(pid: pid_t) -> [AXUIElement] {
+    let appRef = AXUIElementCreateApplication(pid)
+    var value: CFTypeRef?
+
+    let result = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value)
+    guard result == .success, let windowList = value as? [AXUIElement] else {
+      return []
+    }
+    return windowList
+  }
+
   func maxCommonSubstringLength(_ s1: String, _ s2: String) -> Int {
+    if s1.isEmpty || s2.isEmpty {
+      return 0
+    }
     let a = Array(s1)
     let b = Array(s2)
     let n = a.count
