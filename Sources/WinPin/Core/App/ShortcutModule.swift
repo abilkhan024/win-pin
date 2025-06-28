@@ -14,9 +14,8 @@ class ShortcutsModule: AppModule {
   private var eventTap: CFMachPort?
   private var shortcuts: [KeyboardShortcut] = []
 
-  func listeningTo(shortcuts: [KeyboardShortcut]) -> ShortcutsModule {
+  func listenTo(shortcuts: [KeyboardShortcut]) {
     self.shortcuts = shortcuts
-    return self
   }
 
   func getShortcuts() -> [KeyboardShortcut] {
@@ -54,13 +53,12 @@ class ShortcutsModule: AppModule {
       CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
       CGEvent.tapEnable(tap: eventTap, enable: true)
     }
-
   }
 
-  // static func stop() {
-  //   if let eventTap = eventTap {
-  //     CGEvent.tapEnable(tap: eventTap, enable: false)
-  //     self.listeners.removeAll()
-  //   }
-  // }
+  static func stop() {
+    if let eventTap = ShortcutsModule.shared.eventTap {
+      CGEvent.tapEnable(tap: eventTap, enable: false)
+      ShortcutsModule.shared.shortcuts.removeAll()
+    }
+  }
 }

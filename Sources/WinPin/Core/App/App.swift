@@ -41,10 +41,6 @@ final class App {
   private var modules: [AppModule] = []
   private let app = NSApplication.shared
 
-  struct RuntimeError: Error {
-    let message: String
-  }
-
   private init() {}
 
   private func onDelegateLaunch() {

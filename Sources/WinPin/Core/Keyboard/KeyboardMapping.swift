@@ -4,10 +4,6 @@ class KeyboardMapping: Hashable {
   let key: Key
   let modifiers: [Modifier]
 
-  struct ParseError: Error {
-    let message: String
-  }
-
   init(key: Key, modifiers: [Modifier] = []) {
     self.key = key
     self.modifiers = modifiers
@@ -69,12 +65,12 @@ class KeyboardMapping: Hashable {
       if let char = value.popLast() {
         keyStr.insert(char, at: keyStr.startIndex)
       } else {
-        throw ParseError(message: "Failed to do something!! TODO ")
+        throw ParseError(message: "Keymap '\(from)' is in invalid format")
       }
     }
 
     guard let keyRaw = mappingToValue[keyStr], let key = Key(rawValue: keyRaw) else {
-      throw ParseError(message: "Parsed key was not found in dict")
+      throw ParseError(message: "Parsed key was not found in dict for '\(from)'")
     }
     var modStr = ""
     var mods: [Modifier] = []
@@ -84,7 +80,7 @@ class KeyboardMapping: Hashable {
         continue
       }
       guard let mod = Modifier(rawValue: modValue) else {
-        throw ParseError(message: "WARNING: Modifier failed to be parsed")
+        throw ParseError(message: "WARNING: Modifier failed to be parsed for '\(from)'")
       }
       mods.append(mod)
       modStr.removeAll()
@@ -94,10 +90,10 @@ class KeyboardMapping: Hashable {
     }
 
     guard let modValue = mappingToValue[modStr] else {
-      throw ParseError(message: "Mod value failed to parse '\(modStr)'")
+      throw ParseError(message: "Mod value failed to parse '\(modStr)' for '\(from)'")
     }
     guard let mod = Modifier(rawValue: modValue) else {
-      throw ParseError(message: "WARNING: Modifier failed to be parsed")
+      throw ParseError(message: "WARNING: Modifier failed to be parsed for '\(from)'")
     }
     mods.append(mod)
     return KeyboardMapping(key: key, modifiers: mods)
