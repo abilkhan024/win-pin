@@ -7,9 +7,9 @@ private enum ConfigKey: String {
   case saveWindows = "save_windows"
 }
 
-// ["h", "k", "z", "x", "l", ";", "y", "u", "o", "p"]
 private let defaultConfig =
   """
+  # Default config example, can copy this to config path
   \(ConfigKey.workspaceOpen.rawValue)_j=<D><M>j
   \(ConfigKey.workspacePin.rawValue)_j=<D><M><S>j
   \(ConfigKey.workspaceOpen.rawValue)_k=<D><M>k
@@ -52,10 +52,13 @@ class ConfigModule: AppModule {
 
   func load(path: String) {
     var configStr = defaultConfig
+    print("Loading file at path '\(path)'")
     do {
       let content = try String(contentsOfFile: path, encoding: .utf8)
       configStr = content
+      print("Loaded! Using config file from '\(path)'")
     } catch {
+      print("Can't load. Using default config: \n\(defaultConfig)")
     }
     config = getConfigEntries(from: configStr)
   }
@@ -74,6 +77,9 @@ class ConfigModule: AppModule {
     var mappings: [String: (open: String, pin: String)] = [:]
 
     for entry in config {
+      if entry.starts(with: "#") {
+        continue
+      }
       let (key, value) = try getKeyValue(line: entry)
       var workspaceKey = ""
       var isOpen = false
@@ -93,7 +99,6 @@ class ConfigModule: AppModule {
       } else {
         mappings[workspaceKey]!.pin = String(value)
       }
-
     }
 
     return try mappings.map { entry in
