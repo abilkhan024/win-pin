@@ -15,17 +15,15 @@ class WindowPinnerModule: AppModule {
   }
 
   private func loadWindowIds() {
-    do {
-      guard
-        let content = try String(contentsOfFile: windowIdsPath, encoding: .utf8).data(using: .utf8)
-      else { return }
-      let storedIds = try JSONDecoder().decode([String: Int].self, from: content)
-      for entry in storedIds {
-        worspaceWindows[entry.key] = CGWindowID(entry.value)
-      }
-    } catch {
+    guard
+      let content = try? String(contentsOfFile: windowIdsPath, encoding: .utf8).data(using: .utf8)
+    else { return }
+    guard let storedIds = try? JSONDecoder().decode([String: Int].self, from: content) else {
+      return
     }
-
+    for entry in storedIds {
+      worspaceWindows[entry.key] = CGWindowID(entry.value)
+    }
   }
 
   private func saveWindowIds(_: CGEvent) {
@@ -45,7 +43,8 @@ class WindowPinnerModule: AppModule {
         fs.createFile(atPath: windowIdsPath, contents: nil, attributes: nil)
       }
       try jsonStr.write(toFile: windowIdsPath, atomically: true, encoding: .utf8)
-    } catch {
+    } catch let error {
+      print("Failed to save windows: \(error)")
     }
   }
 

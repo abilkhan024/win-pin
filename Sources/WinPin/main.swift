@@ -7,5 +7,6 @@ App.shared
     ShortcutsModule.shared,
     ConfigModule(),
     WindowPinnerModule(),
+    DaemonModule(),
   ])
   .run()

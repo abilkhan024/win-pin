@@ -1,7 +1,18 @@
 import Cocoa
 
+class CliApp: AnyObject {
+  func getCliArgs() -> [String] {
+    return CommandLine.arguments
+  }
+  func getCliArg(at pos: Int) -> String? {
+    let args = getCliArgs()
+    guard args.count > pos else { return nil }
+    return args[pos]
+  }
+}
+
 @MainActor
-class AppModule: AnyObject {
+class AppModule: CliApp {
   func setup(_ app: NSApplication) {}
   func onLaunch(_ app: NSApplication) {}
   func onWillTerminate(_ app: NSApplication) {}
@@ -35,13 +46,11 @@ private class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-final class App {
+final class App: CliApp {
   static let shared = App()
   private let delegate = AppDelegate()
   private var modules: [AppModule] = []
   private let app = NSApplication.shared
-
-  private init() {}
 
   private func onDelegateLaunch() {
     for module in self.modules {
@@ -69,6 +78,22 @@ final class App {
     fatalError("Unused module is requested")
   }
 
+  private func quitWithGuide(app: NSApplication, arg: String) {
+    print(
+      """
+
+        What do you mean by '\(arg)'?
+
+        May be you want to:
+
+            winpin daemon - Run in daemon mode
+            winpin kill - Kill process running daemon mode
+            winpin - Run in foreground
+
+      """)
+    app.terminate(nil)
+  }
+
   func run() {
     let app = NSApplication.shared
     for module in self.modules {
@@ -80,6 +105,20 @@ final class App {
     )
     app.delegate = delegate
     app.setActivationPolicy(.accessory)
-    app.run()
+
+    guard let arg = getCliArg(at: 1) else {
+
+      return app.run()
+    }
+
+    guard
+      let daemonCommand = DaemonModule.DaemonCommand.allCases.first(where: { cmd in
+        cmd.rawValue == arg
+      })
+    else {
+      return quitWithGuide(app: app, arg: arg)
+    }
+
+    App.shared.get(DaemonModule.self).runCommand(command: daemonCommand)
   }
 }
