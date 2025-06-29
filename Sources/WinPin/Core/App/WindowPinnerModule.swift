@@ -49,6 +49,12 @@ class WindowPinnerModule: AppModule {
     }
   }
 
+  private func getPinBinding(workspace: String) -> (_: CGEvent) -> Void {
+    return { _ in
+      self.worspaceWindows[workspace] = App.shared.get(AxModule.self).getFrontmostWindowId()
+    }
+  }
+
   private func getOpenBinding(workspace: String) -> (_: CGEvent) -> Void {
     return { _ in
       if let windowAtKey = self.worspaceWindows[workspace], let windowId = windowAtKey {
@@ -86,11 +92,17 @@ class WindowPinnerModule: AppModule {
       workspaceMappings = try dependencies.config.getWorkspaceMappings()
 
       var appShorctcuts = try workspaceMappings.map { el in
-        KeyboardShortcut(
-          bind: try KeyboardMapping.create(from: el.openMapping),
-          exec: getOpenBinding(workspace: el.workspace)
-        )
-      }
+        [
+          KeyboardShortcut(
+            bind: try KeyboardMapping.create(from: el.openMapping),
+            exec: getOpenBinding(workspace: el.workspace)
+          ),
+          KeyboardShortcut(
+            bind: try KeyboardMapping.create(from: el.pinMapping),
+            exec: getPinBinding(workspace: el.workspace)
+          ),
+        ]
+      }.flatMap({ shortcuts in shortcuts })
 
       appShorctcuts.append(
         KeyboardShortcut(
@@ -105,8 +117,5 @@ class WindowPinnerModule: AppModule {
     } catch {
       terminate(app: app, message: "Unknown error")
     }
-  }
-
-  override func onLaunch(_ app: NSApplication) {
   }
 }
