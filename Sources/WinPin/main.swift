@@ -8,5 +8,6 @@ App.shared
     ConfigModule(),
     WindowPinnerModule(),
     DaemonModule(),
+    WindowLayoutModule(),
   ])
   .run()

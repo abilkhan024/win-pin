@@ -7,11 +7,11 @@ class WindowPinnerModule: AppModule {
   private var saveWindowsMapping: String = ""
   private var worspaceWindows: [String: CGWindowID?] = [:]
 
-  private var dependencies: (config: ConfigModule, shortcuts: ShortcutsModule) {
-    return (
-      config: App.shared.get(ConfigModule.self),
-      shortcuts: App.shared.get(ShortcutsModule.self)
-    )
+  private var config: ConfigModule {
+    return App.shared.get(ConfigModule.self)
+  }
+  private var shortcuts: ShortcutsModule {
+    return App.shared.get(ShortcutsModule.self)
   }
 
   private func loadWindowIds() {
@@ -86,9 +86,9 @@ class WindowPinnerModule: AppModule {
     loadWindowIds()
     do {
       let configPath = getConfigPath()
-      dependencies.config.load(path: configPath)
-      saveWindowsMapping = try dependencies.config.getSaveWindowsMapping()
-      workspaceMappings = try dependencies.config.getWorkspaceMappings()
+      config.load(path: configPath)
+      saveWindowsMapping = try config.getSaveWindowsMapping()
+      workspaceMappings = try config.getWorkspaceMappings()
 
       var appShorctcuts = try workspaceMappings.map { el in
         [
@@ -110,7 +110,7 @@ class WindowPinnerModule: AppModule {
         )
       )
 
-      dependencies.shortcuts.listenTo(shortcuts: appShorctcuts)
+      shortcuts.listenTo(shortcuts: appShorctcuts)
     } catch let error as AppError {
       terminate(app: app, message: "ERROR: \(error.message)")
     } catch {

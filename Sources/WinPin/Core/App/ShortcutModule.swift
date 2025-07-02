@@ -15,11 +15,7 @@ class ShortcutsModule: AppModule {
   private var shortcuts: [KeyboardShortcut] = []
 
   func listenTo(shortcuts: [KeyboardShortcut]) {
-    self.shortcuts = shortcuts
-  }
-
-  func getShortcuts() -> [KeyboardShortcut] {
-    return self.shortcuts
+    self.shortcuts.append(contentsOf: shortcuts)
   }
 
   override func setup(_ app: NSApplication) {
