@@ -24,6 +24,33 @@ class AxModule: AppModule {
     }
   }
 
+  func getWindowDimensions(window: AXUIElement) -> (width: CGFloat, height: CGFloat)? {
+    var sizeValue: AnyObject?
+    AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue)
+    var size = CGSize.zero
+    guard
+      let sizeAX = sizeValue as! AXValue?,
+      AXValueGetValue(sizeAX, .cgSize, &size)
+    else { return nil }
+
+    return (width: size.width, height: size.height)
+  }
+
+  func getWindowPoint(window: AXUIElement) -> CGPoint? {
+    var positionValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue)
+      == .success,
+      let pos = positionValue as! AXValue?
+    {
+      var point = CGPoint.zero
+      if AXValueGetType(pos) == .cgPoint && AXValueGetValue(pos, .cgPoint, &point) {
+        return CGPoint(x: point.x, y: point.y)
+      }
+    }
+
+    return nil
+  }
+
   func getFrontmostWindow() -> AXUIElement? {
     guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
 
@@ -85,18 +112,21 @@ class AxModule: AppModule {
   }
 
   func focusWindow(_ window: AXUIElement) {
-    // Set window as main
-    AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-    // Set window as focused
-    AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-
-    // Also activate the owning app
     var pid: pid_t = 0
-    if AXUIElementGetPid(window, &pid) == .success {
-      if let app = NSRunningApplication(processIdentifier: pid) {
-        app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-      }
+    if AXUIElementGetPid(window, &pid) == .success,
+      let app = NSRunningApplication(processIdentifier: pid)
+    {
+      let axApp = AXUIElementCreateApplication(pid)
+      AXUIElementSetAttributeValue(axApp, kAXHiddenAttribute as CFString, kCFBooleanFalse)
+      AXUIElementPerformAction(axApp, kAXRaiseAction as CFString)
+
+      app.unhide()
+      app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
     }
+
+    AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+    AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
   }
 
   func focusWindow(with id: CGWindowID) {
@@ -205,4 +235,37 @@ class AxModule: AppModule {
     return self.getWindowId(window)
   }
 
+  func transform(window: AXUIElement, position: inout CGPoint, size: inout CGSize) {
+    let posValue = AXValueCreate(.cgPoint, &position)!
+    let sizeValue = AXValueCreate(.cgSize, &size)!
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(window, &pid) == .success else {
+      return
+    }
+    let app = AXUIElementCreateApplication(pid)
+
+    // Some undocumented magic
+    // References: https://github.com/nikitabobko/AeroSpace/blob/6323355a7e3358bc47e416c94fb9532def26f944/Sources/AppBundle/tree/MacApp.swift
+    //             https://github.com/koekeishiya/yabai/commit/3fe4c77b001e1a4f613c26f01ea68c0f09327f3a
+    //             https://github.com/rxhanson/Rectangle/pull/285
+    let attr = "AXEnhancedUserInterface" as CFString
+
+    var currentValue: CFTypeRef?
+    let wasEnabled =
+      AXUIElementCopyAttributeValue(app, attr, &currentValue) == .success
+      && (currentValue as? Bool == true)
+
+    if wasEnabled {
+      let disabled = kCFBooleanFalse as CFTypeRef
+      AXUIElementSetAttributeValue(app, attr, disabled)
+    }
+
+    AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue)
+    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+
+    if wasEnabled {
+      let enabled = kCFBooleanTrue as CFTypeRef
+      AXUIElementSetAttributeValue(app, attr, enabled)
+    }
+  }
 }

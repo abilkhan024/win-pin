@@ -1,5 +1,23 @@
 import Cocoa
 
+struct WindowPosition {
+  let name: String
+  let x: WindowPositionUnit
+  let y: WindowPositionUnit
+  let width: WindowPositionUnit
+  let height: WindowPositionUnit
+}
+
+struct WindowPositionUnit {
+  let value: Float
+  let isPercentage: Bool
+}
+
+struct WindowTransform {
+  let cyclePositions: [WindowPosition]
+  let mapping: String
+}
+
 class WindowLayoutModule: AppModule {
   private var config: ConfigModule {
     return App.shared.get(ConfigModule.self)
@@ -10,73 +28,74 @@ class WindowLayoutModule: AppModule {
   private var shortcuts: ShortcutsModule {
     return App.shared.get(ShortcutsModule.self)
   }
+  private var windowPositions: [AXUIElement: Int] = [:]
 
-  private func isSnappedRight(window: AXUIElement) -> Bool {
-    guard let screenFrame = NSScreen.main?.frame else { return false }
-
-    var posValue: AnyObject?
-    var sizeValue: AnyObject?
-
-    AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posValue)
-    AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue)
-
-    var size = CGSize.zero
-    var pos = CGPoint.zero
-
-    guard
-      let posAX = posValue as! AXValue?,
-      AXValueGetValue(posAX, .cgPoint, &pos),
-      let sizeAX = sizeValue as! AXValue?,
-      AXValueGetValue(sizeAX, .cgSize, &size)
-    else { return false }
-
-    let end = pos.x + size.width
-    let maxEnd = screenFrame.maxX
-    return maxEnd == end
+  private func getCgFloat(from: WindowPositionUnit, maxValue: CGFloat) -> CGFloat {
+    if from.isPercentage {
+      return (CGFloat(from.value) * maxValue) / 100.0
+    }
+    return CGFloat(from.value)
   }
 
-  private func snapToTop(window: AXUIElement) {
-    let screenFrame = NSScreen.main?.frame ?? .zero
-    var position = CGPoint(x: screenFrame.origin.x, y: screenFrame.origin.y)
-    var size = CGSize(width: screenFrame.width, height: screenFrame.height)
-    snapTo(window: window, position: &position, size: &size)
+  private func onTransformRequested(transform: WindowTransform) -> (_: CGEvent) -> Void {
+    { _ in
+      let ax = self.ax
+      guard let window = ax.getFrontmostWindow() else { return }
+      guard let currentPoint = ax.getWindowPoint(window: window) else { return }
+      guard let currentDimensions = ax.getWindowDimensions(window: window) else { return }
+      guard let screen = NSScreen.main else { return }
+      let screenRect = NSScreen.main?.frame ?? .zero
+      let frameHeight = screenRect.height - screen.visibleFrame.height
+
+      let matchedIdx =
+        transform.cyclePositions.firstIndex(where: { position in
+          let startX =
+            round(self.getCgFloat(from: position.x, maxValue: screenRect.maxX))
+            == round(currentPoint.x)
+          let startY =
+            round(self.getCgFloat(from: position.y, maxValue: screenRect.maxY) + frameHeight)
+            == round(currentPoint.y)
+          let width =
+            round(self.getCgFloat(from: position.width, maxValue: screenRect.width))
+            == round(currentDimensions.width)
+          let height =
+            round(self.getCgFloat(from: position.height, maxValue: screenRect.height) - frameHeight)
+            == round(currentDimensions.height)
+
+          return startX && startY && width && height
+        }) ?? self.windowPositions[window] ?? 0
+
+      let nextIdx = (matchedIdx + 1) % transform.cyclePositions.count
+      self.windowPositions[window] = nextIdx
+      let nextPosition = transform.cyclePositions[nextIdx]
+      var position = CGPoint(
+        x: self.getCgFloat(from: nextPosition.x, maxValue: screenRect.maxX),
+        y: self.getCgFloat(from: nextPosition.y, maxValue: screenRect.maxY) + frameHeight
+      )
+      var size = CGSize(
+        width: self.getCgFloat(from: nextPosition.width, maxValue: screenRect.width),
+        height: self.getCgFloat(from: nextPosition.height, maxValue: screenRect.height)
+          - frameHeight
+      )
+      ax.transform(window: window, position: &position, size: &size)
+    }
   }
 
-  private func snapToLeft(window: AXUIElement) {
-    let screenFrame = NSScreen.main?.frame ?? .zero
-    var position = CGPoint(x: screenFrame.origin.x, y: screenFrame.origin.y)
-    var size = CGSize(width: screenFrame.width / 2, height: screenFrame.height)
-    snapTo(window: window, position: &position, size: &size)
-  }
+  private func setupWithConfig() throws {
+    let positions = try config.getWindowPositions()
+    let transforms = try config.getWindowTransforms(positions: positions)
 
-  private func snapTo(window: AXUIElement, position: inout CGPoint, size: inout CGSize) {
-    let posValue = AXValueCreate(.cgPoint, &position)!
-    let sizeValue = AXValueCreate(.cgSize, &size)!
+    let transformShortcuts = try transforms.map { transform in
+      KeyboardShortcut(
+        bind: try KeyboardMapping.create(from: transform.mapping),
+        exec: onTransformRequested(transform: transform)
+      )
+    }
 
-    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
-    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-    AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue)
-    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+    shortcuts.listenTo(shortcuts: transformShortcuts)
   }
 
   override func setup(_ app: NSApplication) {
-    do {
-      let shortcut = KeyboardShortcut(
-        bind: try KeyboardMapping.create(from: "<D><M>n"),
-        exec: { _ in
-          guard let window = self.ax.getFrontmostWindow() else {
-            return
-          }
-          if self.isSnappedRight(window: window) {
-            self.snapToLeft(window: window)
-          } else {
-            self.snapToTop(window: window)
-          }
-        })
-      shortcuts.listenTo(shortcuts: [shortcut])
-    } catch {
-      return
-    }
+    config.execTerminateOnFail(app: app, exec: setupWithConfig)
   }
 }
