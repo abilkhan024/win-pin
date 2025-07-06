@@ -1,3 +1,7 @@
+# Readme In progress.
+
+TODO Demo, TODO customization, TODO install, TODO build from source
+
 # Overview
 
 Basic window manager, primarily used to manage single window to be pinned to
