@@ -149,7 +149,7 @@ class AxModule: AppModule {
       return
     }
     let title = window[kCGWindowName as String] as? String ?? ""
-    guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, !title.isEmpty else { return }
+    guard let pid = window[kCGWindowOwnerPID as String] as? pid_t else { return }
 
     var result: (window: AXUIElement, length: Int)? = nil
 
@@ -169,7 +169,6 @@ class AxModule: AppModule {
       if intersectionLength > cur.length {
         result = (window: axWindow, length: intersectionLength)
       }
-
     }
 
     if let window = result?.window {
