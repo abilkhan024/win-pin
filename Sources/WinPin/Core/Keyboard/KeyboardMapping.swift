@@ -31,7 +31,6 @@ class KeyboardMapping: Hashable {
     return modifiers
   }
 
-  // TODO IFUCKING
   func matches(event: CGEvent) -> Bool {
     let modifiers = getPresentModifiers(event: event)
     if modifiers.sorted(by: <) != self.modifiers.sorted(by: <) {

@@ -11,7 +11,7 @@ class WindowPinnerModule: AppModule {
   private let windowIdsPath = "/tmp/winpin.json"
   private var workspaceMappings: [WorkspaceMapping] = []
   private var saveWindowsMapping: String = ""
-  private var worspaceWindows: [String: CGWindowID?] = [:]
+  private var worspaceWindows: [String: AXUIElement?] = [:]
 
   private var config: ConfigModule {
     return App.shared.get(ConfigModule.self)
@@ -28,18 +28,22 @@ class WindowPinnerModule: AppModule {
       return
     }
     for entry in storedIds {
-      worspaceWindows[entry.key] = CGWindowID(entry.value)
+      worspaceWindows[entry.key] = App.shared.get(AxModule.self).findWindowBy(
+        id: CGWindowID(entry.value))
     }
   }
 
   private func saveWindowIds(_: CGEvent) {
     var worspaceIds: [String: Int] = [:]
+    let axModule = App.shared.get(AxModule.self)
     for entry in worspaceWindows {
-      if let id = entry.value {
+      if let window = entry.value, axModule.isAlive(element: window),
+        let id = axModule.getWindowId(window)
+      {
         worspaceIds[entry.key] = Int(id)
       }
     }
-    let _ = App.shared.get(AxModule.self).getFrontmostWindowId()
+
     do {
       let jsonData = try JSONEncoder().encode(worspaceIds)
       guard let jsonStr = String(data: jsonData, encoding: .utf8) else {
@@ -52,18 +56,20 @@ class WindowPinnerModule: AppModule {
     } catch let error {
       print("Failed to save windows: \(error)")
     }
+
   }
 
   private func getPinBinding(workspace: String) -> (_: CGEvent) -> Void {
     return { _ in
-      self.worspaceWindows[workspace] = App.shared.get(AxModule.self).getFrontmostWindowId()
+      let window = App.shared.get(AxModule.self).getFrontmostWindow()
+      self.worspaceWindows[workspace] = window
     }
   }
 
   private func getOpenBinding(workspace: String) -> (_: CGEvent) -> Void {
     return { _ in
-      if let windowAtKey = self.worspaceWindows[workspace], let windowId = windowAtKey {
-        App.shared.get(AxModule.self).focusWindow(with: windowId)
+      if let windowAtKey = self.worspaceWindows[workspace], let window = windowAtKey {
+        App.shared.get(AxModule.self).focusWindow(window)
       } else {
         print("No window at \(workspace)")
       }

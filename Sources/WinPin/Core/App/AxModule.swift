@@ -111,7 +111,31 @@ class AxModule: AppModule {
     return result?.id
   }
 
+  func readElementValue(element: AXUIElement, attribute: String) -> (
+    result: AXError,
+    value: CFTypeRef?
+  ) {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    return (result: result, value: value)
+  }
+
+  func isAlive(element: AXUIElement) -> Bool {
+    let (result, _) = readElementValue(element: element, attribute: kAXRoleAttribute)
+    return result == .success
+  }
+
+  func getWindowPid(_ window: AXUIElement) -> pid_t? {
+    var pid: pid_t = 0
+    if AXUIElementGetPid(window, &pid) == .success {
+      return pid
+    }
+    return nil
+  }
+
   func focusWindow(_ window: AXUIElement) {
+    guard isAlive(element: window) else { return }
+
     var pid: pid_t = 0
     if AXUIElementGetPid(window, &pid) == .success,
       let app = NSRunningApplication(processIdentifier: pid)
@@ -129,12 +153,12 @@ class AxModule: AppModule {
     AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
   }
 
-  func focusWindow(with id: CGWindowID) {
+  func findWindowBy(id: CGWindowID) -> AXUIElement? {
     guard
       let windowsList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
         as? [[String: AnyObject]]
     else {
-      return
+      return nil
     }
     guard
       let window = windowsList.first(where: { window in
@@ -146,10 +170,10 @@ class AxModule: AppModule {
         return windowId == id
       })
     else {
-      return
+      return nil
     }
     let title = window[kCGWindowName as String] as? String ?? ""
-    guard let pid = window[kCGWindowOwnerPID as String] as? pid_t else { return }
+    guard let pid = window[kCGWindowOwnerPID as String] as? pid_t else { return nil }
 
     var result: (window: AXUIElement, length: Int)? = nil
 
@@ -172,8 +196,9 @@ class AxModule: AppModule {
     }
 
     if let window = result?.window {
-      self.focusWindow(window)
+      return window
     }
+    return nil
   }
 
   private func getWindowsOfApp(pid: pid_t) -> [AXUIElement] {
@@ -225,13 +250,6 @@ class AxModule: AppModule {
       app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
     }
     return
-  }
-
-  func getFrontmostWindowId() -> CGWindowID? {
-    guard let window = self.getFrontmostWindow() else {
-      return nil
-    }
-    return self.getWindowId(window)
   }
 
   func transform(window: AXUIElement, position: inout CGPoint, size: inout CGSize) {
